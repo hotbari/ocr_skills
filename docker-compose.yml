@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: rag-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: rag_vectordb
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: rag-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DATABASE=rag_vectordb
+      - UPLOAD_DIR=/app/uploads
+      - PIPELINE_STATE_DIR=/app/pipeline_state
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+      - ./pipeline_state:/app/pipeline_state
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: rag-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    stdin_open: true
+    tty: true
+    depends_on:
+      - backend
+
+volumes:
+  mongodb_data:

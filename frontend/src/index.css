@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --cp-bg-dark: #050510;
+  --cp-bg-card: #13132b;
+  --cp-neon-green: #39ff14;
+  --cp-neon-purple: #b026ff;
+  --cp-neon-blue: #00f3ff;
+  --cp-text-main: #ffffff;
+  --cp-text-muted: #b4b4c7;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s ease-out forwards;
+}
+
+.btn-glow {
+  box-shadow: 0 0 10px var(--cp-neon-green), 0 0 20px var(--cp-neon-green);
+  transition: all 0.3s ease;
+}
+
+.btn-glow:hover {
+  box-shadow: 0 0 20px var(--cp-neon-green), 0 0 40px var(--cp-neon-green);
+}
+
+body {
+  @apply bg-[#050510] text-[#ffffff];
+}

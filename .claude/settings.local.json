@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir /a /s /b \"C:\\\\Users\\\\user\\\\Desktop\\\\Project\\\\260127_claude_master\\\\260128_OCR_skills\")",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "WebSearch",
+      "Bash(dir:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(wc:*)",
+      "Bash(pip install:*)",
+      "Bash(pytest:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "context7"
+  ],
+  "enabledPlugins": {
+    "python-development@claude-code-workflows": true,
+    "code-review-ai@claude-code-workflows": true,
+    "backend-development@claude-code-workflows": true
+  }
+}

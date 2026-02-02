@@ -1,0 +1,74 @@
+[project]
+name = "rag-vectordb-pdf-pipeline"
+version = "1.0.0"
+description = "RAG Pipeline for PDF Processing with MongoDB Vector Storage"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # Web Framework
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.9",
+
+    # Database
+    "motor>=3.3.2",
+    "pymongo>=4.6.1",
+
+    # LLM & Embeddings
+    "openai>=1.12.0",
+    "tiktoken>=0.5.2",
+
+    # OCR & PDF Processing
+    "pymupdf>=1.23.21",
+    "pytesseract>=0.3.10",
+    "pillow>=10.2.0",
+
+    # Data Processing
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.1.0",
+    "numpy>=1.26.3",
+    "pyyaml>=6.0.1",
+
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "aiofiles>=23.2.1",
+    "httpx>=0.26.0",
+    "tenacity>=8.2.3",
+    "structlog>=24.1.0",
+
+    # Language Detection
+    "langdetect>=1.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.4",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.26.0",
+    "mypy>=1.8.0",
+    "ruff>=0.2.0",
+    "reportlab>=4.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
