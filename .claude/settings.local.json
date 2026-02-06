@@ -10,7 +10,8 @@
       "Bash(wc:*)",
       "Bash(pip install:*)",
       "Bash(pytest:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(ls:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
