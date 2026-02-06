@@ -1,4 +1,4 @@
-# OCR Pipeline을 Claude Skill로 만들기
+# OCR Pipeline -> Claude Skill
 
 ## 목차
 1. [Skill이란 무엇인가](#1-skill이란-무엇인가)
