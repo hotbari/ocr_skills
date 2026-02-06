@@ -27,9 +27,11 @@ export default function SearchBar({
       <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           {isSearching ? (
-            <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
+            <Loader2 className="h-5 w-5 text-[var(--cp-neon-green)] animate-spin" style={{
+              filter: 'drop-shadow(0 0 4px var(--cp-neon-green))'
+            }} />
           ) : (
-            <Search className="h-5 w-5 text-gray-400" />
+            <Search className="h-5 w-5 text-[var(--cp-text-muted)]" />
           )}
         </div>
         <input
@@ -39,22 +41,29 @@ export default function SearchBar({
           placeholder={placeholder}
           disabled={isSearching}
           className={clsx(
-            'block w-full pl-10 pr-24 py-3 border border-gray-300 rounded-lg',
-            'focus:ring-2 focus:ring-blue-500 focus:border-blue-500',
-            'disabled:bg-gray-100 disabled:cursor-not-allowed',
-            'placeholder-gray-400 text-gray-900'
+            'block w-full pl-10 pr-24 py-3 border rounded-lg transition-all duration-300',
+            'bg-[var(--cp-bg-card)] border-[var(--cp-text-muted)]/30',
+            'focus:outline-none focus:border-[var(--cp-neon-blue)]',
+            'disabled:opacity-50 disabled:cursor-not-allowed',
+            'placeholder-[var(--cp-text-muted)] text-[var(--cp-text-main)]'
           )}
+          style={{
+            boxShadow: query.trim() ? '0 0 15px var(--cp-neon-blue)/30' : 'none'
+          }}
         />
         <div className="absolute inset-y-0 right-0 flex items-center pr-2">
           <button
             type="submit"
             disabled={!query.trim() || isSearching}
             className={clsx(
-              'px-4 py-1.5 rounded-md text-sm font-medium',
+              'px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-300',
               query.trim() && !isSearching
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                ? 'bg-[var(--cp-neon-green)]/20 text-[var(--cp-neon-green)] border border-[var(--cp-neon-green)] hover:bg-[var(--cp-neon-green)]/30'
+                : 'bg-[var(--cp-bg-dark)] text-[var(--cp-text-muted)]/50 border border-[var(--cp-text-muted)]/20 cursor-not-allowed'
             )}
+            style={query.trim() && !isSearching ? {
+              boxShadow: '0 0 10px var(--cp-neon-green), 0 0 20px var(--cp-neon-green)'
+            } : {}}
           >
             Search
           </button>
