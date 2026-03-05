@@ -143,7 +143,7 @@ class Stage6Vision(SkippableStage[Stage6Input, Stage6Output]):
                 self.logger.debug(
                     "Vision processed",
                     entity_id=entity.id,
-                    type=entity.entity_type.value,
+                    type=entity.entity_type if isinstance(entity.entity_type, str) else entity.entity_type.value,
                 )
 
             except Exception as e:

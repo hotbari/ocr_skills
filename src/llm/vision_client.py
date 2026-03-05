@@ -176,7 +176,7 @@ Be thorough but concise. Focus on information that would be useful for document 
             image_format = "png"
 
         system_prompt = """You are an expert at analyzing diagrams and flowcharts.
-Extract a structured representation of the diagram with:
+Extract a structured representation of the diagram and return a JSON object with:
 1. diagram_type: The type (flowchart, state_diagram, sequence_diagram, entity_relationship, process_flow, etc.)
 2. nodes: List of nodes/boxes with {id, label, type}
 3. edges: List of connections with {from, to, label, condition}

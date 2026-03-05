@@ -222,6 +222,8 @@ class PipelineOrchestrator:
                 elif stage == PipelineStage.STAGE_5B_ENTITIES:
                     await self._persist_entities(document_id, output)
                     total_entities = len(output.entities)
+                elif stage == PipelineStage.STAGE_6_VISION:
+                    await self._update_vision_entities(document_id, output)
                 elif stage == PipelineStage.STAGE_7_EMBEDDING:
                     await self._update_embeddings(document_id, output)
 
@@ -426,6 +428,17 @@ class PipelineOrchestrator:
         await self.entity_repo.delete_by_document(document_id)
         # Insert new
         await self.entity_repo.bulk_insert(output.entities)
+
+    async def _update_vision_entities(self, document_id: str, output):
+        """Update entities with vision descriptions after Stage 6."""
+        for entity in output.enhanced_entities:
+            if entity.vision_processed:
+                updates = {"vision_processed": True}
+                if entity.vision_description:
+                    updates["vision_description"] = entity.vision_description
+                if entity.ir_yaml:
+                    updates["ir_yaml"] = entity.ir_yaml
+                await self.entity_repo.update(entity.id, **updates)
 
     async def _update_embeddings(self, document_id: str, output):
         """Update embeddings in chunks."""
