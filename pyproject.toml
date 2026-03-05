@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ocr-pipeline-v2"
+version = "2.0.0"
+description = "PP-Structure 기반 OCR 문서 처리 파이프라인 (벡터 없음)"
+requires-python = ">=3.10"
+
+dependencies = [
+    # API
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "python-multipart>=0.0.9",
+
+    # Pydantic
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+
+    # MongoDB
+    "motor>=3.3.0",
+
+    # PDF 처리
+    "pymupdf>=1.23.0",          # PyMuPDF: 텍스트/이미지/테이블 추출
+    "pillow>=10.0.0",            # 이미지 처리
+
+    # OpenAI (Vision + LLM)
+    "openai>=1.12.0",
+
+    # 유틸리티
+    "structlog>=24.0.0",
+    "aiofiles>=23.0.0",
+]
+
+[project.optional-dependencies]
+paddle = [
+    # PP-Structure / PaddleOCR (스캔 PDF 지원)
+    # CPU 버전
+    "paddlepaddle>=2.6.0",
+    "paddleocr>=2.7.0",
+    # GPU 버전은 paddlepaddle-gpu 설치
+    "opencv-python>=4.8.0",
+]
+
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",            # FastAPI 테스트 클라이언트
+    "ruff>=0.4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

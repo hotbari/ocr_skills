@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: ocr-v2-mongodb
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    environment:
+      MONGO_INITDB_DATABASE: ocr_pipeline
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ocr-v2-backend
+    restart: unless-stopped
+    ports:
+      - "8002:8000"
+    env_file:
+      - .env
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DATABASE=ocr_pipeline
+      - UPLOAD_DIR=/app/uploads
+      - PIPELINE_STATE_DIR=/app/pipeline_state
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    volumes:
+      - ./uploads:/app/uploads
+      - ./pipeline_state:/app/pipeline_state
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: ocr-v2-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8082:8081"
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=mongodb
+      - ME_CONFIG_MONGODB_PORT=27017
+      - ME_CONFIG_MONGODB_URL=mongodb://mongodb:27017/
+      - ME_CONFIG_BASICAUTH=false
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+volumes:
+  mongodb_data:
