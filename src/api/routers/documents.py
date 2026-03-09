@@ -49,6 +49,7 @@ def get_toc_repo() -> TOCRepository:
 @router.post("/upload", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     file: UploadFile = File(...),
+    auto_run: bool = True,
     settings: Settings = Depends(get_settings),
     doc_repo: DocumentRepository = Depends(get_doc_repo),
 ):
@@ -100,11 +101,28 @@ async def upload_document(
 
     await doc_repo.insert(document)
 
+    # 자동 파이프라인 실행
+    pipeline_started = False
+    if auto_run:
+        try:
+            from fastapi import BackgroundTasks
+            from src.pipeline.orchestrator import PipelineOrchestrator
+            import asyncio
+
+            async def _run_pipeline():
+                orchestrator = PipelineOrchestrator(settings)
+                await orchestrator.run(document)
+
+            asyncio.create_task(_run_pipeline())
+            pipeline_started = True
+        except Exception as e:
+            logger.warning("파이프라인 자동 시작 실패", error=str(e))
+
     return DocumentUploadResponse(
         document_id=document_id,
         filename=file.filename,
         status=document.status,
-        message="업로드 완료. /pipeline/{document_id}/run 으로 처리를 시작하세요.",
+        message="업로드 완료. 파이프라인이 자동으로 시작됩니다." if pipeline_started else "업로드 완료. /pipeline/{document_id}/run 으로 처리를 시작하세요.",
         page_count=page_count,
         file_size_bytes=len(content),
     )

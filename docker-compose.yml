@@ -1,22 +1,4 @@
-version: '3.8'
-
 services:
-  mongodb:
-    image: mongo:7.0
-    container_name: ocr-v2-mongodb
-    restart: unless-stopped
-    ports:
-      - "27018:27017"
-    environment:
-      MONGO_INITDB_DATABASE: ocr_pipeline
-    volumes:
-      - mongodb_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   backend:
     build:
       context: .
@@ -28,33 +10,53 @@ services:
     env_file:
       - .env
     environment:
-      - MONGODB_URI=mongodb://mongodb:27017
-      - MONGODB_DATABASE=ocr_pipeline
+      - MONGODB_URI=mongodb://rag-mongodb:27017
+      - MONGODB_DATABASE=ocr_pipeline_v2_test
       - UPLOAD_DIR=/app/uploads
       - PIPELINE_STATE_DIR=/app/pipeline_state
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      - MINIO_ENDPOINT=ocr-v2-minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=ocr-images
+      - MINIO_USE_SSL=false
+      - MINIO_PUBLIC_ENDPOINT=192.168.10.24:9000
     volumes:
       - ./uploads:/app/uploads
       - ./pipeline_state:/app/pipeline_state
+      - ./src:/app/src
     depends_on:
-      mongodb:
-        condition: service_healthy
+      - minio
+    networks:
+      - default
+      - ocr_skills_net
 
-  mongo-express:
-    image: mongo-express:latest
-    container_name: ocr-v2-mongo-express
+  minio:
+    image: minio/minio:latest
+    container_name: ocr-v2-minio
     restart: unless-stopped
     ports:
-      - "8082:8081"
+      - "9000:9000"
+      - "9001:9001"
     environment:
-      - ME_CONFIG_MONGODB_SERVER=mongodb
-      - ME_CONFIG_MONGODB_PORT=27017
-      - ME_CONFIG_MONGODB_URL=mongodb://mongodb:27017/
-      - ME_CONFIG_BASICAUTH=false
-    depends_on:
-      mongodb:
-        condition: service_healthy
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
 
 volumes:
-  mongodb_data:
+  minio_data:
+
+networks:
+  ocr_skills_net:
+    external: true
+    name: ocr_skills_default

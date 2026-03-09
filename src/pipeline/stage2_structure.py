@@ -33,6 +33,19 @@ from src.pipeline.stage1_layout import Stage1Output
 logger = structlog.get_logger()
 
 
+def _collect_title_font_sizes(stage1: "Stage1Output") -> list[float]:
+    """모든 TITLE 블록의 font_size를 수집해 내림차순으로 반환."""
+    sizes = []
+    for blocks in stage1.layout.blocks_by_page.values():
+        for block in blocks:
+            bt = block.block_type
+            if not isinstance(bt, BlockType):
+                bt = BlockType(bt)
+            if bt == BlockType.TITLE and block.font_size:
+                sizes.append(block.font_size)
+    return sorted(set(sizes), reverse=True)
+
+
 @dataclass
 class Stage2Output:
     document_id: str
@@ -50,7 +63,10 @@ def run_stage2(stage0: Stage0Output, stage1: Stage1Output) -> Stage2Output:
     t0 = time.monotonic()
 
     document_id = stage0.document_id
-    builder = StructureBuilder(document_id)
+
+    # TITLE 블록의 폰트 크기 수집 → 레벨 임계값 계산
+    title_font_sizes = _collect_title_font_sizes(stage1)
+    builder = StructureBuilder(document_id, title_font_sizes=title_font_sizes)
 
     # 전체 페이지를 순서대로 처리
     all_pages = sorted(stage1.layout.blocks_by_page.keys())
@@ -96,7 +112,7 @@ def run_stage2(stage0: Stage0Output, stage1: Stage1Output) -> Stage2Output:
 class StructureBuilder:
     """블록 스트림을 섹션 트리로 조립."""
 
-    def __init__(self, document_id: str):
+    def __init__(self, document_id: str, title_font_sizes: list[float] | None = None):
         self.document_id = document_id
         self.sections: list[Section] = []
         self.tables: list[TableEntity] = []
@@ -108,6 +124,19 @@ class StructureBuilder:
         self._image_seq: dict[int, int] = {}   # page → seq
         self._pending_caption: str | None = None  # FIGURE/TABLE_CAPTION 임시 저장
         self._last_block_type: BlockType | None = None
+
+        # 폰트 크기 기반 레벨 임계값: 상위 크기순 [L1 min, L2 min]
+        sizes = title_font_sizes or []
+        if len(sizes) >= 3:
+            # 상위 크기 → L1, 중간 → L2, 나머지 → L3
+            self._l1_min = sizes[0]          # 가장 큰 폰트
+            self._l2_min = sizes[len(sizes) // 2]  # 중간 폰트
+        elif len(sizes) == 2:
+            self._l1_min = sizes[0]
+            self._l2_min = sizes[1]
+        else:
+            self._l1_min = None
+            self._l2_min = None
 
     def process_block(self, block: LayoutBlock) -> None:
         bt = block.block_type if isinstance(block.block_type, str) else block.block_type.value
@@ -151,7 +180,7 @@ class StructureBuilder:
         if not heading:
             return
 
-        level = self._infer_heading_level(heading, block.bbox)
+        level = self._infer_heading_level(heading, block.bbox, font_size=block.font_size)
         self._section_seq += 1
 
         section = Section(
@@ -181,22 +210,36 @@ class StructureBuilder:
         self.sections.append(section)
         self._current_section = section
 
-    def _infer_heading_level(self, text: str, bbox: BoundingBox) -> int:
-        """헤딩 레벨 추정 (텍스트 패턴 기반)."""
-        # "제N장", "N." 패턴 → L1
+    def _infer_heading_level(self, text: str, bbox: BoundingBox, font_size: float | None = None) -> int:
+        """헤딩 레벨 추정 (폰트 크기 우선, 텍스트 패턴 보조).
+
+        폰트 크기 정보가 있으면 문서 내 상대적 크기로 레벨 결정.
+        없으면 텍스트 패턴/길이로 추정.
+        """
+        # 패턴 기반 우선 (숫자 넘버링)
         if re.match(r"^(제\s*\d+\s*[장편절]|chapter\s+\d+)", text, re.IGNORECASE):
             return 1
-        # "N.N.N" 패턴 → L3 (L2보다 먼저 검사)
         if re.match(r"^\d+\.\d+\.\d+", text):
             return 3
-        # "N.N" 패턴 → L2
-        if re.match(r"^\d+\.\d+", text):
+        if re.match(r"^\d+\.\d+\s", text):
             return 2
-        # 짧은 텍스트 (10자 이하) → L1
-        if len(text) <= 10:
+        if re.match(r"^\d+\.\s", text):
             return 1
-        # 20자 이하 → L2
-        if len(text) <= 20:
+
+        # 폰트 크기 기반
+        if font_size and self._l1_min and self._l2_min:
+            if font_size >= self._l1_min:
+                return 1
+            if font_size >= self._l2_min:
+                return 2
+            return 3
+
+        # fallback: 첫 페이지 제목은 L1, 이후는 텍스트 길이 기반
+        if bbox.y0 < 100 and len(text) > 10:  # 페이지 상단 큰 제목
+            return 1
+        if len(text) <= 15:
+            return 1
+        if len(text) <= 30:
             return 2
         return 3
 

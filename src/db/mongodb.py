@@ -22,6 +22,7 @@ class Collections:
     TABLES = "tables"
     IMAGES = "images"
     PIPELINE_STATES = "pipeline_states"
+    OCR_RESULTS = "ocr_results"
 
 
 class MongoDB:
@@ -103,6 +104,10 @@ class MongoDB:
 
         # pipeline_states
         await db[Collections.PIPELINE_STATES].create_index("document_id", unique=True)
+
+        # ocr_results
+        await db[Collections.OCR_RESULTS].create_index([("created_at", -1)])
+        await db[Collections.OCR_RESULTS].create_index("ref_document_id", unique=True)
 
         logger.info("MongoDB 인덱스 생성 완료")
 

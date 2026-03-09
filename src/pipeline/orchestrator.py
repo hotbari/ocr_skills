@@ -9,6 +9,9 @@ from typing import Any
 import structlog
 
 from src.core.config import Settings
+from src.db.repositories.ocr_result_repo import OCRResultRepository
+from src.pipeline.ocr_result_builder import build_ocr_result
+from src.storage.minio_client import get_minio_client
 from src.core.models import (
     Document,
     DocumentStatus,
@@ -52,8 +55,19 @@ class PipelineOrchestrator:
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.extractor = PDFExtractor(upload_dir=settings.upload_dir)
-        self.layout_analyzer = LayoutAnalyzer(use_gpu=False)
+        self.extractor = PDFExtractor(
+            upload_dir=settings.upload_dir,
+            scan_min_chars_per_page=settings.scan_min_chars_per_page,
+            scan_image_ratio_threshold=settings.scan_image_ratio_threshold,
+        )
+        self.layout_analyzer = LayoutAnalyzer(
+            use_gpu=settings.pp_structure_use_gpu,
+            lang=settings.pp_structure_lang,
+            use_angle_cls=settings.pp_structure_use_angle_cls,
+            block_merge_enabled=settings.block_merge_enabled,
+            block_merge_y_gap=settings.block_merge_y_gap,
+            easyocr_lang=settings.easyocr_lang,
+        )
         self.vision_client = VisionClient(
             api_key=settings.openai_api_key,
             model=settings.vision_model,
@@ -123,6 +137,9 @@ class PipelineOrchestrator:
                 stage2.toc, stage2.sections, stage2.tables, stage2.images
             )
 
+            # 이미지 MinIO 업로드
+            await self._upload_images_to_minio(stage2.images, document_id)
+
             # ── Stage 3: 이미지 캡셔닝 ──────────────────────────────────────
             await self.doc_repo.update_status(
                 document_id, DocumentStatus.PROCESSING, PipelineStage.STAGE_3_VISION
@@ -175,6 +192,14 @@ class PipelineOrchestrator:
                 r.duration_seconds or 0 for r in pipeline_state.stages.values()
             )
 
+            # OCRResult (PRD 형식) 빌드 및 저장
+            try:
+                ocr_result = build_ocr_result(document_id, stage2, stage3, stage4)
+                await OCRResultRepository().upsert(ocr_result)
+                logger.info("OCRResult 저장 완료", document_id=document_id)
+            except Exception as e:
+                logger.warning("OCRResult 저장 실패 (비필수)", error=str(e))
+
             await self.doc_repo.update_status(document_id, DocumentStatus.COMPLETED)
             logger.info(
                 "파이프라인 완료",
@@ -194,6 +219,23 @@ class PipelineOrchestrator:
             )
 
         return pipeline_state
+
+    async def _upload_images_to_minio(
+        self, images: list[ImageEntity], document_id: str
+    ) -> None:
+        """추출된 이미지를 MinIO에 업로드하고 image_path를 업데이트."""
+        minio = get_minio_client(self.settings)
+        if not minio:
+            logger.warning("MinIO 미설정, 이미지 로컬 저장 유지")
+            return
+        for img in images:
+            if not img.image_path:
+                continue
+            object_name = f"{document_id}/{Path(img.image_path).name}"
+            result = minio.upload_file(object_name, img.image_path)
+            if result:
+                img.image_path = minio.get_public_url(object_name)
+                await self.image_repo.update_image_path(img.id, img.image_path)
 
     async def _save_stage2_results(
         self,

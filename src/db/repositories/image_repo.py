@@ -54,6 +54,10 @@ class ImageRepository:
             {"$set": {"vision_description": description, "vision_processed": True}},
         )
 
+    async def update_image_path(self, image_id: str, image_path: str) -> None:
+        col = MongoDB.get_collection(Collections.IMAGES)
+        await col.update_one({"_id": image_id}, {"$set": {"image_path": image_path}})
+
     async def delete_by_document(self, document_id: str) -> int:
         result = await self.collection.delete_many({"document_id": document_id})
         return result.deleted_count

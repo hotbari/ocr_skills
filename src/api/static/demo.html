@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCR Pipeline Demo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  body { font-family: 'Noto Sans KR', sans-serif; }
+  .tab-btn.active { border-bottom: 2px solid #3b82f6; color: #2563eb; font-weight: 600; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  pre { white-space: pre-wrap; word-break: break-all; }
+  .markdown-body table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+  .markdown-body th, .markdown-body td { border: 1px solid #d1d5db; padding: 6px 10px; text-align: left; font-size: 13px; }
+  .markdown-body th { background: #f3f4f6; font-weight: 600; }
+  .page-card { cursor: pointer; transition: all .15s; }
+  .page-card:hover { background: #eff6ff; }
+  .page-card.selected { background: #dbeafe; border-left: 3px solid #3b82f6; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress-bar { transition: width 0.5s ease; }
+  .drop-zone { border: 2px dashed #93c5fd; transition: all .2s; }
+  .drop-zone.dragover { border-color: #3b82f6; background: #eff6ff; }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- Header -->
+<header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4 shadow-sm">
+  <div class="flex items-center gap-2">
+    <svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+    </svg>
+    <span class="font-bold text-gray-800 text-lg">OCR Pipeline Demo</span>
+  </div>
+  <div class="ml-auto flex items-center gap-3">
+    <span id="api-status" class="badge bg-gray-100 text-gray-500">연결 중...</span>
+    <button onclick="loadDocuments()" class="text-sm text-blue-600 hover:underline">새로고침</button>
+  </div>
+</header>
+
+<div class="flex h-[calc(100vh-57px)]">
+
+  <!-- Left Sidebar -->
+  <aside class="w-72 bg-white border-r border-gray-200 flex flex-col">
+
+    <!-- Upload Section -->
+    <div class="p-4 border-b border-gray-200">
+      <div id="drop-zone" class="drop-zone rounded-xl p-4 text-center cursor-pointer bg-blue-50" onclick="document.getElementById('file-input').click()">
+        <svg class="w-8 h-8 mx-auto mb-2 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+        </svg>
+        <p class="text-sm font-medium text-blue-700">PDF 업로드</p>
+        <p class="text-xs text-blue-500 mt-1">클릭 또는 드래그</p>
+      </div>
+      <input id="file-input" type="file" accept=".pdf" class="hidden" onchange="uploadFile(this.files[0])">
+
+      <!-- Upload Progress -->
+      <div id="upload-progress" class="hidden mt-3">
+        <div class="flex items-center justify-between mb-1">
+          <span id="upload-filename" class="text-xs text-gray-600 truncate max-w-[180px]"></span>
+          <span id="upload-pct" class="text-xs text-blue-600"></span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-1.5">
+          <div id="upload-bar" class="progress-bar bg-blue-500 h-1.5 rounded-full" style="width:0%"></div>
+        </div>
+        <p id="upload-stage" class="text-xs text-gray-500 mt-1"></p>
+      </div>
+    </div>
+
+    <!-- Document List -->
+    <div class="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
+      <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">처리된 문서</h2>
+      <span id="doc-count" class="text-xs text-gray-400"></span>
+    </div>
+    <div id="doc-list" class="flex-1 overflow-y-auto p-2 space-y-1">
+      <div class="text-center text-gray-400 text-sm py-8">로딩 중...</div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="flex-1 flex flex-col overflow-hidden">
+
+    <!-- Doc Header -->
+    <div id="doc-header" class="bg-white border-b border-gray-200 px-6 py-3 hidden">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 id="doc-title" class="font-semibold text-gray-800"></h1>
+          <p id="doc-meta" class="text-xs text-gray-500 mt-0.5"></p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="prevPage()" class="px-2 py-1 text-sm border rounded hover:bg-gray-50">&#9664;</button>
+          <span id="page-indicator" class="text-sm text-gray-600 min-w-[80px] text-center"></span>
+          <button onclick="nextPage()" class="px-2 py-1 text-sm border rounded hover:bg-gray-50">&#9654;</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content Split -->
+    <div class="flex-1 flex overflow-hidden">
+
+      <!-- Page List -->
+      <div id="page-list-panel" class="w-36 bg-white border-r border-gray-200 overflow-y-auto hidden">
+        <div class="px-3 py-2 border-b border-gray-100 text-xs font-semibold text-gray-500">페이지</div>
+        <div id="page-list" class="p-2 space-y-1"></div>
+      </div>
+
+      <!-- Content Area -->
+      <div class="flex-1 overflow-y-auto p-6" id="content-area">
+
+        <div id="empty-state" class="flex flex-col items-center justify-center h-full text-gray-400">
+          <svg class="w-16 h-16 mb-4 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+          <p class="text-lg font-medium">PDF를 업로드하거나 문서를 선택하세요</p>
+        </div>
+
+        <!-- Pipeline Progress -->
+        <div id="pipeline-progress" class="hidden max-w-2xl mx-auto">
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h2 id="progress-title" class="font-semibold text-gray-800 mb-4">파이프라인 처리 중...</h2>
+            <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
+              <div id="progress-bar" class="progress-bar bg-blue-500 h-2 rounded-full" style="width:0%"></div>
+            </div>
+            <div id="stage-list" class="space-y-2"></div>
+          </div>
+        </div>
+
+        <div id="loading-state" class="hidden flex flex-col items-center justify-center h-full text-gray-400">
+          <svg class="w-8 h-8 spin mb-3 text-blue-500" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+          </svg>
+          <p class="text-sm">로딩 중...</p>
+        </div>
+
+        <!-- Page Content -->
+        <div id="page-content" class="hidden max-w-4xl mx-auto">
+          <div id="page-stats" class="flex gap-2 mb-4 flex-wrap"></div>
+          <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div class="flex border-b border-gray-200 px-4">
+              <button class="tab-btn active px-4 py-3 text-sm" data-tab="sections">섹션</button>
+              <button class="tab-btn px-4 py-3 text-sm" data-tab="tables">테이블</button>
+              <button class="tab-btn px-4 py-3 text-sm" data-tab="images">이미지</button>
+              <button class="tab-btn px-4 py-3 text-sm" data-tab="raw">JSON</button>
+            </div>
+            <div id="tab-sections" class="tab-panel active p-4 space-y-4"></div>
+            <div id="tab-tables" class="tab-panel p-4 space-y-4"></div>
+            <div id="tab-images" class="tab-panel p-4 space-y-4"></div>
+            <div id="tab-raw" class="tab-panel p-4">
+              <pre id="raw-json" class="text-xs bg-gray-50 rounded p-4 overflow-auto max-h-[60vh]"></pre>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const API = '';
+let currentDocId = null;
+let currentResult = null;
+let currentPageIdx = 0;
+let _pollTimer = null;
+
+// ── Init ─────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    await api('/health');
+    document.getElementById('api-status').textContent = '● 연결됨';
+    document.getElementById('api-status').className = 'badge bg-green-100 text-green-700';
+  } catch {
+    document.getElementById('api-status').textContent = '● 오프라인';
+    document.getElementById('api-status').className = 'badge bg-red-100 text-red-600';
+  }
+  setupDragDrop();
+  await loadDocuments();
+}
+
+async function api(path, opts) {
+  const res = await fetch(API + path, opts);
+  if (!res.ok) { const t = await res.text(); throw new Error(`${res.status}: ${t}`); }
+  return res.json();
+}
+
+// ── Upload ────────────────────────────────────────────────────────────
+function setupDragDrop() {
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.pdf')) uploadFile(file);
+    else alert('PDF 파일만 업로드 가능합니다.');
+  });
+}
+
+async function uploadFile(file) {
+  if (!file) return;
+  const prog = document.getElementById('upload-progress');
+  prog.classList.remove('hidden');
+  document.getElementById('upload-filename').textContent = file.name;
+  document.getElementById('upload-pct').textContent = '업로드 중...';
+  document.getElementById('upload-stage').textContent = '';
+  setBar('upload-bar', 10);
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const res = await api('/documents/upload?auto_run=true', { method: 'POST', body: fd });
+    setBar('upload-bar', 30);
+    document.getElementById('upload-pct').textContent = '파이프라인 시작됨';
+    document.getElementById('upload-stage').textContent = `ID: ${res.document_id}`;
+    await loadDocuments();
+    startPolling(res.document_id);
+  } catch(e) {
+    document.getElementById('upload-pct').textContent = '오류: ' + e.message;
+  }
+}
+
+function setBar(id, pct) {
+  document.getElementById(id).style.width = pct + '%';
+}
+
+// ── Polling ────────────────────────────────────────────────────────────
+function startPolling(docId) {
+  stopPolling();
+  selectDocumentById(docId, true);
+  _pollTimer = setInterval(async () => {
+    try {
+      const status = await api(`/pipeline/${docId}/status`);
+      updatePipelineProgress(docId, status);
+      if (status.overall_status === 'completed' || status.overall_status === 'failed') {
+        stopPolling();
+        setBar('upload-bar', 100);
+        document.getElementById('upload-pct').textContent = status.overall_status === 'completed' ? '완료!' : '실패';
+        if (status.overall_status === 'completed') {
+          await loadDocuments();
+          await selectDocumentById(docId, false);
+        }
+      }
+    } catch(e) { /* ignore */ }
+  }, 2000);
+}
+
+function stopPolling() {
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+}
+
+function updatePipelineProgress(docId, status) {
+  const STAGES = {
+    'stage_0_extract': 'Stage 0: PDF 추출',
+    'stage_1_layout': 'Stage 1: 레이아웃 분석',
+    'stage_2_structure': 'Stage 2: 구조화',
+    'stage_3_vision': 'Stage 3: 이미지 캡셔닝',
+    'stage_4_tags': 'Stage 4: 태그/요약',
+  };
+  const pct = status.progress_percent || 0;
+  setBar('progress-bar', pct);
+  document.getElementById('progress-title').textContent =
+    status.overall_status === 'completed' ? '파이프라인 완료!' :
+    status.overall_status === 'failed' ? '파이프라인 실패' :
+    `파이프라인 처리 중... ${pct}%`;
+
+  setBar('upload-bar', Math.min(30 + pct * 0.7, 99));
+  document.getElementById('upload-pct').textContent = `${pct}%`;
+  document.getElementById('upload-stage').textContent = status.current_stage ? STAGES[status.current_stage] || status.current_stage : '';
+
+  const stageList = document.getElementById('stage-list');
+  stageList.innerHTML = '';
+  (status.stages || []).forEach(s => {
+    const label = STAGES[s.stage] || s.stage;
+    const color = s.status === 'completed' ? 'text-green-600' : s.status === 'running' ? 'text-blue-600' : s.status === 'failed' ? 'text-red-600' : 'text-gray-400';
+    const icon = s.status === 'completed' ? '✓' : s.status === 'running' ? '⟳' : s.status === 'failed' ? '✗' : '○';
+    const dur = s.duration_seconds ? ` (${s.duration_seconds.toFixed(1)}s)` : '';
+    stageList.innerHTML += `<div class="flex items-center gap-2 text-sm ${color}"><span>${icon}</span><span>${label}${dur}</span></div>`;
+  });
+}
+
+// ── Documents ──────────────────────────────────────────────────────────
+async function loadDocuments() {
+  const list = document.getElementById('doc-list');
+  try {
+    const data = await api('/ocr-results?page_size=50');
+    document.getElementById('doc-count').textContent = `${data.total}개`;
+    if (data.items.length === 0) {
+      list.innerHTML = '<div class="text-center text-gray-400 text-sm py-8">결과 없음</div>';
+      return;
+    }
+    list.innerHTML = '';
+    data.items.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'p-2 rounded-lg text-sm cursor-pointer hover:bg-blue-50 transition-colors';
+      div.dataset.id = item.ref_document_id;
+      const date = new Date(item.created_at).toLocaleDateString('ko-KR');
+      div.innerHTML = `
+        <div class="font-medium text-gray-800 truncate text-xs" title="${item.ref_document_id}">${item.ref_document_id}</div>
+        <div class="text-xs text-gray-400 mt-0.5">${date}</div>
+      `;
+      div.addEventListener('click', () => selectDocumentById(item.ref_document_id, false, div));
+      list.appendChild(div);
+    });
+  } catch(e) {
+    list.innerHTML = `<div class="text-center text-red-400 text-sm py-8">${e.message}</div>`;
+  }
+}
+
+async function selectDocumentById(docId, showProgress, el) {
+  document.querySelectorAll('#doc-list > div').forEach(d => d.classList.remove('bg-blue-100'));
+  if (el) el.classList.add('bg-blue-100');
+  else {
+    const found = document.querySelector(`[data-id="${docId}"]`);
+    if (found) found.classList.add('bg-blue-100');
+  }
+
+  currentDocId = docId;
+
+  if (showProgress) {
+    showState('progress');
+    document.getElementById('doc-header').classList.add('hidden');
+    document.getElementById('page-list-panel').classList.add('hidden');
+    // 초기 상태 fetch
+    try {
+      const status = await api(`/pipeline/${docId}/status`);
+      updatePipelineProgress(docId, status);
+    } catch(e) {}
+    return;
+  }
+
+  showState('loading');
+  try {
+    const result = await api(`/ocr-results/${docId}`);
+    currentResult = result;
+    currentPageIdx = 0;
+    renderResult();
+  } catch(e) {
+    showState('empty');
+  }
+}
+
+// ── Render ─────────────────────────────────────────────────────────────
+function renderResult() {
+  const result = currentResult;
+  if (!result || result.page.length === 0) { showState('empty'); return; }
+
+  document.getElementById('doc-header').classList.remove('hidden');
+  document.getElementById('doc-title').textContent = result.ref_document_id;
+  document.getElementById('doc-meta').textContent = `ID: ${result.ocr_result_id} · ${new Date(result.created_at).toLocaleString('ko-KR')} · ${result.page.length}페이지`;
+
+  document.getElementById('page-list-panel').classList.remove('hidden');
+  const pageList = document.getElementById('page-list');
+  pageList.innerHTML = '';
+  result.page.forEach((p, idx) => {
+    const card = document.createElement('div');
+    card.className = 'page-card p-2 rounded text-xs text-gray-700 border border-transparent';
+    card.dataset.idx = idx;
+    card.innerHTML = `<div class="font-semibold">p.${p.page_num}</div><div class="text-gray-400">${p.sections.length}섹 ${p.table.length}표 ${p.images.length}이미지</div>`;
+    card.addEventListener('click', () => { currentPageIdx = idx; renderPage(); });
+    pageList.appendChild(card);
+  });
+  renderPage();
+  showState('content');
+}
+
+function renderPage() {
+  const result = currentResult;
+  const page = result.page[currentPageIdx];
+
+  document.querySelectorAll('.page-card').forEach((c, i) => c.classList.toggle('selected', i === currentPageIdx));
+  document.getElementById('page-indicator').textContent = `${currentPageIdx + 1} / ${result.page.length} (p.${page.page_num})`;
+
+  document.getElementById('page-stats').innerHTML = `
+    <span class="badge bg-blue-100 text-blue-700">섹션 ${page.sections.length}</span>
+    <span class="badge bg-purple-100 text-purple-700">테이블 ${page.table.length}</span>
+    <span class="badge bg-green-100 text-green-700">이미지 ${page.images.length}</span>
+    <span class="badge bg-gray-100 text-gray-600">p.${page.page_num}</span>
+  `;
+
+  // Sections
+  const secPanel = document.getElementById('tab-sections');
+  secPanel.innerHTML = '';
+  if (!page.sections.length) {
+    secPanel.innerHTML = '<p class="text-gray-400 text-sm py-4 text-center">섹션 없음</p>';
+  } else {
+    page.sections.forEach(s => {
+      const div = document.createElement('div');
+      div.className = 'border border-gray-200 rounded-lg p-4';
+      const kws = s.keyword ? s.keyword.split(',').map(k => `<span class="badge bg-blue-50 text-blue-600">${esc(k.trim())}</span>`).join(' ') : '';
+      div.innerHTML = `
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <div><span class="text-xs font-mono text-gray-400">${s.section_id}</span>
+          <h3 class="font-semibold text-gray-800 mt-0.5">${esc(s.title || '(제목 없음)')}</h3></div>
+          <span class="badge bg-gray-100 text-gray-500 shrink-0">seq:${s.sequence_id}</span>
+        </div>
+        ${kws ? `<div class="mb-2 flex flex-wrap gap-1">${kws}</div>` : ''}
+        <div class="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 rounded p-3 max-h-48 overflow-y-auto leading-relaxed">${esc(s.content || '(내용 없음)')}</div>
+      `;
+      secPanel.appendChild(div);
+    });
+  }
+
+  // Tables
+  const tblPanel = document.getElementById('tab-tables');
+  tblPanel.innerHTML = '';
+  if (!page.table.length) {
+    tblPanel.innerHTML = '<p class="text-gray-400 text-sm py-4 text-center">테이블 없음</p>';
+  } else {
+    page.table.forEach(t => {
+      const div = document.createElement('div');
+      div.className = 'border border-gray-200 rounded-lg p-4';
+      div.innerHTML = `
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-gray-800">${esc(t.name)}</h3>
+          <span class="badge bg-gray-100 text-gray-500">seq:${t.sequence_id}</span>
+        </div>
+        <div class="markdown-body overflow-auto">${marked.parse(t.table_md || '')}</div>
+      `;
+      tblPanel.appendChild(div);
+    });
+  }
+
+  // Images
+  const imgPanel = document.getElementById('tab-images');
+  imgPanel.innerHTML = '';
+  if (!page.images.length) {
+    imgPanel.innerHTML = '<p class="text-gray-400 text-sm py-4 text-center">이미지 없음</p>';
+  } else {
+    page.images.forEach(img => {
+      const div = document.createElement('div');
+      div.className = 'border border-gray-200 rounded-lg p-4';
+      const tags = (img.tag||[]).map(t => `<span class="badge bg-green-50 text-green-700">${esc(t)}</span>`).join(' ');
+      const isMinIO = img.image_url && (img.image_url.startsWith('http://') || img.image_url.startsWith('https://'));
+      div.innerHTML = `
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <div><span class="font-mono text-xs text-gray-400">${img.type}</span>
+          <h3 class="font-semibold text-gray-800">${esc(img.name)}</h3></div>
+          <span class="badge bg-gray-100 text-gray-500">seq:${img.sequence_id}</span>
+        </div>
+        ${tags ? `<div class="mb-2">${tags}</div>` : ''}
+        ${img.description ? `<p class="text-sm text-gray-600 bg-gray-50 rounded p-3 mb-3">${esc(img.description)}</p>` : ''}
+        ${isMinIO ? `
+          <img src="${img.image_url}" alt="${esc(img.name)}" class="rounded-lg max-h-64 object-contain border border-gray-200 w-full" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+          <p class="hidden text-xs text-gray-400 mt-1">이미지 로드 실패: <span class="font-mono">${esc(img.image_url)}</span></p>
+        ` : img.image_url ? `<p class="text-xs text-gray-400 font-mono truncate">${esc(img.image_url)}</p>` : '<p class="text-xs text-gray-400">이미지 경로 없음</p>'}
+      `;
+      imgPanel.appendChild(div);
+    });
+  }
+
+  document.getElementById('raw-json').textContent = JSON.stringify(page, null, 2);
+  activateTab('sections');
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => activateTab(btn.dataset.tab)));
+function activateTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+}
+
+// ── Page Nav ──────────────────────────────────────────────────────────
+function prevPage() { if (currentPageIdx > 0) { currentPageIdx--; renderPage(); } }
+function nextPage() { if (currentResult && currentPageIdx < currentResult.page.length - 1) { currentPageIdx++; renderPage(); } }
+
+// ── State ─────────────────────────────────────────────────────────────
+function showState(state) {
+  document.getElementById('empty-state').classList.toggle('hidden', state !== 'empty');
+  document.getElementById('loading-state').classList.toggle('hidden', state !== 'loading');
+  document.getElementById('page-content').classList.toggle('hidden', state !== 'content');
+  document.getElementById('pipeline-progress').classList.toggle('hidden', state !== 'progress');
+  if (state !== 'content') {
+    document.getElementById('doc-header').classList.add('hidden');
+    document.getElementById('page-list-panel').classList.add('hidden');
+  }
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+init();
+</script>
+</body>
+</html>

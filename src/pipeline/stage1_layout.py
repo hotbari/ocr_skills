@@ -34,6 +34,7 @@ async def run_stage1(
         pdf_path=pdf_path,
         document_id=stage0.document_id,
         is_scanned=stage0.result.is_scanned,
+        scanned_pages=stage0.result.scanned_pages,
     )
 
     # 블록 타입별 통계

@@ -37,6 +37,30 @@ class Settings(BaseSettings):
     use_paddle_ocr: bool = True             # 스캔 PDF PaddleOCR 사용
     use_pp_structure: bool = True           # PP-Structure 레이아웃 분석 사용
 
+    # PP-Structure 설정
+    pp_structure_lang: str = "korean"              # OCR 언어 (korean / ch / en)
+    pp_structure_use_angle_cls: bool = False       # 기울어진 텍스트 감지 (cls 모델 필요)
+    pp_structure_use_gpu: bool = False             # GPU 사용 여부
+
+    # EasyOCR 설정 (스캔 PDF 한국어 OCR)
+    easyocr_lang: list[str] = ["ko", "en"]         # 한국어 + 영어
+
+    # MinIO 설정
+    minio_endpoint: str = "localhost:9000"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
+    minio_bucket: str = "ocr-images"
+    minio_use_ssl: bool = False
+    minio_public_endpoint: str = ""   # 외부 접근용 (비어있으면 minio_endpoint 사용)
+
+    # 스캔 판별 설정
+    scan_min_chars_per_page: int = 50              # 페이지당 최소 글자수 (미만이면 스캔)
+    scan_image_ratio_threshold: float = 0.8        # 이미지 면적 비율 임계값
+
+    # 블록 후처리 설정
+    block_merge_enabled: bool = True               # 인접 텍스트 블록 병합 여부
+    block_merge_y_gap: float = 10.0                # 병합 허용 Y 간격 (픽셀)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

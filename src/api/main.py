@@ -7,10 +7,18 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from pathlib import Path
+
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
 from src.api.routers import documents, pipeline
+from src.api.routers import ocr_results
 from src.core.config import get_settings
 from src.core.exceptions import OCRPipelineError
 from src.db.mongodb import MongoDB
+
+_STATIC_DIR = Path(__file__).parent / "static"
 
 logger = structlog.get_logger()
 
@@ -72,6 +80,11 @@ async def general_error_handler(request: Request, exc: Exception):
 
 app.include_router(documents.router)
 app.include_router(pipeline.router)
+app.include_router(ocr_results.router)
+
+# 정적 파일 (데모 페이지)
+if _STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 
 @app.get("/health")
@@ -82,6 +95,12 @@ async def health_check():
         "database": "connected" if db_ok else "disconnected",
         "version": "2.0.0",
     }
+
+
+@app.get("/demo", include_in_schema=False)
+async def demo_page():
+    """OCR 결과 데모 뷰어."""
+    return FileResponse(str(_STATIC_DIR / "demo.html"))
 
 
 @app.get("/")

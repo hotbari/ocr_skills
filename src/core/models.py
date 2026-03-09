@@ -121,6 +121,7 @@ class LayoutBlock(BaseModel):
     text: Optional[str] = None          # 텍스트 블록이면 내용
     confidence: float = 1.0
     sequence_in_page: int = 0
+    font_size: Optional[float] = None   # 폰트 크기 (PyMuPDF 추출 시 설정)
 
     class Config:
         use_enum_values = True

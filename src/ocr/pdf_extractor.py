@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import fitz  # PyMuPDF
+import numpy as np
 import structlog
 
 from src.core.models import BoundingBox, Language
@@ -51,15 +52,21 @@ class ExtractionResult:
     metadata: dict[str, Any]
     detected_language: Language
     is_scanned: bool
+    scanned_pages: list[int] = field(default_factory=list)  # 스캔으로 판별된 페이지 번호 목록
 
 
 class PDFExtractor:
     """PyMuPDF를 사용한 PDF 텍스트/이미지/테이블 추출."""
 
-    SCANNED_TEXT_THRESHOLD = 50  # 페이지당 최소 글자 수 (미만이면 스캔 PDF)
-
-    def __init__(self, upload_dir: Path):
+    def __init__(
+        self,
+        upload_dir: Path,
+        scan_min_chars_per_page: int = 50,
+        scan_image_ratio_threshold: float = 0.8,
+    ):
         self.upload_dir = upload_dir
+        self.scan_min_chars_per_page = scan_min_chars_per_page
+        self.scan_image_ratio_threshold = scan_image_ratio_threshold
 
     async def extract(self, pdf_path: Path, document_id: str) -> ExtractionResult:
         logger.info("PDF 추출 시작", document_id=document_id, path=str(pdf_path))
@@ -69,7 +76,8 @@ class PDFExtractor:
         metadata = self._extract_metadata(doc)
         text_by_page = self._extract_text(doc)
         raw_text = "\n\n".join(p.content for p in text_by_page if p.content)
-        is_scanned = self._detect_scanned(text_by_page)
+        scanned_pages = self._detect_scanned_pages(doc, text_by_page)
+        is_scanned = len(scanned_pages) > len(text_by_page) / 2
         detected_language = self._detect_language(raw_text)
 
         images_dir = self.upload_dir / document_id / "images"
@@ -86,6 +94,7 @@ class PDFExtractor:
             images=len(images),
             tables=len(tables),
             is_scanned=is_scanned,
+            scanned_pages_count=len(scanned_pages),
         )
 
         return ExtractionResult(
@@ -98,6 +107,7 @@ class PDFExtractor:
             metadata=metadata,
             detected_language=detected_language,
             is_scanned=is_scanned,
+            scanned_pages=scanned_pages,
         )
 
     def _extract_metadata(self, doc: fitz.Document) -> dict[str, Any]:
@@ -121,12 +131,72 @@ class PDFExtractor:
             ))
         return pages
 
-    def _detect_scanned(self, pages: list[PageText]) -> bool:
-        if not pages:
-            return False
-        total_chars = sum(len(p.content) for p in pages)
-        avg_chars = total_chars / len(pages)
-        return avg_chars < self.SCANNED_TEXT_THRESHOLD
+    def _detect_scanned_pages(self, doc: fitz.Document, pages: list[PageText]) -> list[int]:
+        """페이지별 스캔 여부를 판별하여 스캔 페이지 번호 목록을 반환한다.
+
+        판별 기준 (OR 조건):
+        - 텍스트 글자수 < scan_min_chars_per_page
+        - 이미지 면적 비율 > scan_image_ratio_threshold AND 임베디드 폰트 없음
+        """
+        scanned = []
+        for page_num, page in enumerate(doc, start=1):
+            text_len = len(page.get_text().strip())
+            has_fonts = len(page.get_fonts()) > 0
+
+            # 이미지 면적 합산
+            image_area = 0.0
+            for img_info in page.get_images(full=True):
+                xref = img_info[0]
+                try:
+                    for r in page.get_image_rects(xref):
+                        image_area += (r.x1 - r.x0) * (r.y1 - r.y0)
+                except Exception:
+                    pass
+            page_area = page.rect.width * page.rect.height
+            img_ratio = image_area / page_area if page_area > 0 else 0.0
+
+            is_scan = (
+                text_len < self.scan_min_chars_per_page
+                or (img_ratio > self.scan_image_ratio_threshold and not has_fonts)
+            )
+            if is_scan:
+                scanned.append(page_num)
+
+        logger.debug(
+            "스캔 페이지 판별",
+            total_pages=len(pages),
+            scanned_count=len(scanned),
+            scanned_pages=scanned,
+        )
+        return scanned
+
+    @staticmethod
+    def preprocess_scan_image(img_array: np.ndarray) -> np.ndarray:
+        """스캔 페이지 이미지를 OCR에 최적화된 형태로 전처리한다.
+
+        처리 순서:
+        1. 저해상도(width<1500 or height<2000)이면 2x 업스케일
+        2. 그레이스케일 변환
+        3. Otsu 이진화
+        4. 모폴로지 노이즈 제거
+        5. BGR로 복원 (PP-Structure 입력 형식 유지)
+        """
+        import cv2
+
+        h, w = img_array.shape[:2]
+        if w < 1500 or h < 2000:
+            img_array = cv2.resize(img_array, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+
+        if len(img_array.shape) == 3:
+            gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = img_array
+
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        denoised = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+        result = cv2.cvtColor(denoised, cv2.COLOR_GRAY2BGR)
+        return result
 
     def _detect_language(self, text: str) -> Language:
         if not text:

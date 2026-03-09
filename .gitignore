@@ -10,3 +10,7 @@ pipeline_state/
 dist/
 .venv/
 venv/
+pipeline_outputs/
+.omc/
+*.pdf
+test_*.py
